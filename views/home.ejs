@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h2>Welcome, <%= username %>!</h2>
+    <a href="/logout">Logout</a>
+
+    <!-- Chat Interface -->
+    <div id="chat-box">
+      <ul id="messages"></ul>
+    </div>
+    <form id="chat-form">
+      <input type="file" id="image-upload" accept="image/*" style="display: none;" />
+      <button type="button" id="upload-btn">Upload Image</button>
+      <textarea id="message-input" autocomplete="off" placeholder="Type a message..."></textarea>
+      <button type="submit">Send</button>
+    </form>
+
+    <!-- Image Preview Container -->
+    <div id="image-preview-container" style="display: none;">
+      <p>Image Preview:</p>
+      <img id="image-preview" src="" alt="Preview" style="max-width: 200px; margin-top: 5px;" />
+      <button id="send-image-btn">Send Image</button>
+      <button id="cancel-image-btn">Cancel</button>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+
+    socket.on('chat history', (msgs) => {
+      const messagesList = document.getElementById('messages');
+      msgs.forEach(msg => {
+        addMessage(msg);
+      });
+      scrollToBottomIfAtBottom();
+    });
+
+    socket.on('chat message', (msg) => {
+      addMessage(msg);
+      scrollToBottomIfAtBottom();
+    });
+
+    socket.on('user connected', (data) => {
+      const message = `${data.username} has connected.`;
+      addSystemMessage(message);
+      scrollToBottomIfAtBottom();
+    });
+
+    socket.on('user disconnected', (data) => {
+      const message = `${data.username} has disconnected.`;
+      addSystemMessage(message);
+      scrollToBottomIfAtBottom();
+    });
+
+    document.getElementById('chat-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      sendMessage();
+    });
+
+    document.getElementById('message-input').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) { // Prevent sending on Shift+Enter
+        e.preventDefault(); // Prevent newline from being added
+        sendMessage();
+      }
+    });
+
+    function sendMessage() {
+      const input = document.getElementById('message-input');
+      const message = input.value.trim();
+      if (message) {
+        socket.emit('chat message', { username: '<%= username %>', text: message });
+        input.value = '';
+        adjustInputHeight(input);
+      }
+    }
+
+    document.getElementById('upload-btn').addEventListener('click', function() {
+      document.getElementById('image-upload').click();
+    });
+
+    document.getElementById('image-upload').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        showImagePreview(file);
+      }
+    });
+
+    document.getElementById('message-input').addEventListener('paste', function(e) {
+      const clipboardItems = e.clipboardData.items;
+      for (let i = 0; i < clipboardItems.length; i++) {
+        const item = clipboardItems[i];
+        if (item.type.indexOf('image') !== -1) {
+          const blob = item.getAsFile();
+          showImagePreview(blob);
+        }
+      }
+    });
+
+    function showImagePreview(file) {
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const imagePreview = document.getElementById('image-preview');
+        imagePreview.src = event.target.result;
+
+        const imagePreviewContainer = document.getElementById('image-preview-container');
+        imagePreviewContainer.style.display = 'block';
+
+        window.currentImageBase64 = event.target.result.split(',')[1];
+      };
+      reader.readAsDataURL(file);
+    }
+
+    document.getElementById('send-image-btn').addEventListener('click', function() {
+      if (window.currentImageBase64) {
+        socket.emit('image upload', { username: '<%= username %>', imageData: window.currentImageBase64 });
+        hideImagePreview();
+      } else {
+        alert('No image to send.');
+      }
+    });
+
+    document.getElementById('cancel-image-btn').addEventListener('click', function() {
+      hideImagePreview();
+    });
+
+    function hideImagePreview() {
+      const imagePreviewContainer = document.getElementById('image-preview-container');
+      imagePreviewContainer.style.display = 'none';
+      window.currentImageBase64 = null;
+    }
+
+    function addMessage(msg) {
+      const messagesList = document.getElementById('messages');
+      const li = document.createElement('li');
+
+      if (msg.imageUrl) {
+        const img = document.createElement('img');
+        img.src = msg.imageUrl;
+        img.style.maxWidth = '200px';
+        img.style.marginTop = '5px';
+        li.textContent = `${msg.username}: `;
+        li.appendChild(img);
+      } else {
+        li.textContent = `${msg.username}: ${msg.text}`;
+      }
+
+      messagesList.appendChild(li);
+    }
+
+    function addSystemMessage(message) {
+      const messagesList = document.getElementById('messages');
+      const li = document.createElement('li');
+      li.textContent = message;
+      li.style.fontStyle = 'italic'; 
+      li.style.color = '#888'; 
+      messagesList.appendChild(li);
+    }
+
+    let isAutoScrolling = true;
+    const chatBox = document.getElementById('chat-box');
+
+    chatBox.addEventListener('scroll', function() {
+      const isAtBottom = chatBox.scrollHeight - chatBox.scrollTop === chatBox.clientHeight;
+      isAutoScrolling = isAtBottom;
+    });
+
+    function scrollToBottomIfAtBottom() {
+      if (isAutoScrolling) {
+        chatBox.scrollTop = chatBox.scrollHeight;
+      }
+    }
+
+    const messageInput = document.getElementById('message-input');
+
+    messageInput.addEventListener('input', function() {
+      adjustInputHeight(this);
+    });
+
+    function adjustInputHeight(input) {
+      input.style.height = 'auto';
+      input.style.height = input.scrollHeight + 'px';
+    }
+  </script>
+</body>
+</html>
